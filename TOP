@@ -1,0 +1,19 @@
+`timescale 1ns / 1ps
+
+module top(
+    input ck, reset, //MISO,
+    output wire nCS, SCLK, MOSI,
+    output wire [7:0] AN,
+    output wire CA, CB, CC, CD, CE, CF, CG
+    );
+wire [7:0] REGname, DATAout;
+wire READY, START;
+wire [3:0] seg0,seg1,seg2,seg3,seg4,seg5,seg6,seg7;
+wire MISO;
+//wire nCS, SCLK, MOSI;
+
+READreg u0(ck, START, MISO, REGname, READY, nCS, SCLK, MOSI, DATAout);
+block u1(ck, READY, DATAout, seg0, seg1, seg2, seg3, seg4, seg5, seg6, seg7, START, REGname);
+eightdisplay  u2(ck,reset,seg0,seg1,seg2,seg3,seg4,seg5,seg6,seg7,CA,CB,CC,CD,CE,CF,CG,AN);
+accelerometer u3(ck, SCLK, MOSI, nCS, MISO);
+endmodule
