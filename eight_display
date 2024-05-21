@@ -1,0 +1,115 @@
+`timescale 1ns / 1ps
+
+module sevenseg(
+ input [3:0] inbit,
+ output reg CA,CB,CC,CD,CE,CF,CG);
+ always @(inbit)
+  case (inbit)
+  4'b0000: {CA,CB,CC,CD,CE,CF,CG}=7'b0000001;
+  4'b0001: {CA,CB,CC,CD,CE,CF,CG}=7'b1001111;
+  4'b0010: {CA,CB,CC,CD,CE,CF,CG}=7'b0010010;
+  4'b0011: {CA,CB,CC,CD,CE,CF,CG}=7'b0000110;
+  4'b0100: {CA,CB,CC,CD,CE,CF,CG}=7'b1001011;
+  4'b0101: {CA,CB,CC,CD,CE,CF,CG}=7'b0100100;
+  4'b0110: {CA,CB,CC,CD,CE,CF,CG}=7'b0100000;
+  4'h7: {CA,CB,CC,CD,CE,CF,CG}=7'b0001111;
+  4'h8: {CA,CB,CC,CD,CE,CF,CG}=7'b0000000;
+  4'h9: {CA,CB,CC,CD,CE,CF,CG}=7'b0000100;
+  4'hA: {CA,CB,CC,CD,CE,CF,CG}=7'b0001000;
+  4'hB: {CA,CB,CC,CD,CE,CF,CG}=7'b1100000;
+  4'hC: {CA,CB,CC,CD,CE,CF,CG}=7'b0110001;
+  4'hD: {CA,CB,CC,CD,CE,CF,CG}=7'b1000010;
+  4'hE: {CA,CB,CC,CD,CE,CF,CG}=7'b0110000;
+  4'hF: {CA,CB,CC,CD,CE,CF,CG}=7'b0111000;
+  default: {CA,CB,CC,CD,CE,CF,CG}=7'bx;
+  endcase
+endmodule
+
+module genrefresh(
+input ck,reset,
+output reg refresh);
+reg [16:0] cnt,cnt_nxt;
+
+always @(posedge ck, negedge reset)
+ if(reset) cnt<=0;
+  else cnt<=cnt_nxt;
+
+always @(cnt)
+ if(cnt<99999) cnt_nxt=cnt+1;
+  else cnt_nxt=0;
+
+always @(cnt)
+  if(cnt) refresh=0;
+   else refresh=1;
+
+endmodule
+
+module cnt_8(
+ input ck,reset,refresh,
+ output reg [2:0] cnt);
+ reg [2:0] cnt_nxt;
+
+ always @(posedge ck, posedge reset)
+  if(reset) cnt<=0;
+   else cnt<=cnt_nxt;
+
+ always @(refresh, cnt)
+  if(refresh) cnt_nxt=cnt+1;
+   else cnt_nxt=cnt;
+
+endmodule
+
+
+
+module eightdisplay(
+input ck,reset,
+input [3:0] seg0,seg1,seg2,seg3,seg4,seg5,seg6,seg7,
+output CA,CB,CC,CD,CE,CF,CG,
+output [7:0]AN);
+wire [2:0] sel;
+wire [3:0] inbit;
+wire refresh;
+cnt_8 u0(ck,reset,refresh,sel);
+genrefresh u1(ck,reset,refresh);
+mux u2(seg0,seg1,seg2,seg3,seg4,seg5,seg6,seg7,sel,inbit);
+dec3_8 u3(sel,AN);
+sevenseg u4(inbit,CA,CB,CC,CD,CE,CF,CG);
+endmodule
+
+module dec3_8(
+input [2:0] sel, //nell'input non va messo assolutamente il reg perché viene acquisito
+output reg [7:0] AN); //è un reg perché gli assegno il valore tramite always
+
+always @(sel)
+    case(sel)
+        3'd0: AN=8'b1111_1110;
+        3'd1: AN=8'b1111_1101;
+        3'd2: AN=8'b1111_1011;
+        3'd3: AN=8'b1111_0111;
+        3'd4: AN=8'b1110_1111;
+        3'd5: AN=8'b1101_1111;
+        3'd6: AN=8'b1011_1111;
+        3'd7: AN=8'b0111_1111;
+    default: AN=8'bx;
+
+ endcase
+endmodule
+
+module mux(
+input [3:0] seg0,seg1,seg2,seg3,seg4,seg5,seg6,seg7,
+input [2:0] sel,
+output reg [3:0] inbit);
+always @(sel)
+ case(sel)
+  3'd0: inbit=seg0;
+  3'd1: inbit=seg1;
+  3'd2: inbit=seg2;
+  3'd3: inbit=seg3;
+  3'd4: inbit=seg4;
+  3'd5: inbit=seg5;
+  3'd6: inbit=seg6;
+  3'd7: inbit=seg7;
+  
+  //default: inbit = 4'dx;
+ endcase
+endmodule
