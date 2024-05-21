@@ -1,0 +1,142 @@
+`timescale 1ns / 1ps
+module accelerometer(
+    input clk, SCLK, MOSI, nCS,
+    output MISO);
+wire [15:0] INSTR;
+wire SHd, SHi, EN15, EN7, clr15, clr7, HIT15, HIT7, loadX, loadY, loadZ;
+load_dataX u0 (SHd, loadX, MISO);
+load_dataY u1 (SHd, loadY, MISO);
+load_dataZ u2 (SHd, loadZ, MISO);
+read_instr u3 (SHi, MOSI, INSTR);
+counter15 u4(EN15, clr15, HIT15);
+counter7 u5 (EN7, clr7, HIT7);
+control_acc u6(clk, SCLK, MOSI, nCS,
+    INSTR, loadX, loadY, loadZ, SHd, SHi, EN7, HIT7, clr7, EN15, HIT15, clr15);
+endmodule
+
+module control_acc(
+    input clk, SCLK, MOSI, nCS,
+    input [15:0] INSTR,
+    output reg loadX, loadY, loadZ, SHd, SHi, EN7, HIT7, clr7, EN15, HIT15, clr15
+    );
+reg [55:0] state, state_nxt;
+
+parameter [55:0] IDLE="IDLE", START="START", READ1="READ1", R0="R0", TEST="TEST", 
+    LOADX="LOADX", LOADY="LOADY", LOADZ="LOADZ", L0="L0", SHD="SHD", SHD0="SHD0", L1="L1", WnCS1="WnCS1";
+
+always @(posedge clk) state<=state_nxt;
+
+always @(state, nCS, SCLK)
+    case (state)
+        IDLE: if (nCS==0) state_nxt<=START;
+            else state_nxt<=IDLE;
+        START: if (SCLK==1) state_nxt<=READ1;
+            else state_nxt<=START;
+        READ1: state_nxt<=R0;
+        R0: if (HIT15==1) state_nxt<=TEST;
+                else state_nxt<=START;
+        TEST: if (INSTR==15'h0B08) state_nxt<=LOADX;
+                else if (INSTR==15'H0B09) state_nxt<=LOADY;
+                else if (INSTR==15'H0B0A) state_nxt<=LOADZ;
+        LOADX: state_nxt<=L0;
+        LOADY: state_nxt<=L0;
+        LOADZ: state_nxt<=L0;
+        L0: if(SCLK==1) state_nxt<=SHD;
+            else state_nxt<=L0;
+        SHD: state_nxt<=SHD0;
+        SHD0: state_nxt<=L1;
+        L1: if (HIT7==1) state_nxt<=WnCS1;
+                else state_nxt<=L0;
+        WnCS1: if (nCS==1) state_nxt<=IDLE;
+        default: state_nxt<=IDLE;
+        endcase
+
+always @(state)
+    case (state)
+        IDLE: begin clr15<=1; clr7<=0; SHi<=0; SHd<=0; EN15<=0; EN7<=0; end
+        START: begin SHi<=0; EN15<=0; end
+        READ1: begin SHi<=1; EN15<=1; end
+        R0: begin EN15<=0; SHi<=0; end
+        LOADX: begin loadX<=1; end
+        LOADY: begin loadY<=1; end
+        LOADZ: begin loadZ<=1; end
+        L0: EN7<=0;
+        SHD: begin SHd<=1; end
+        SHD0: begin SHd<=0; EN7<=1; end
+        L1: EN7<=0;
+    endcase
+endmodule
+
+module load_dataX(
+    input SHd, loadX,
+    output MISO);
+reg [7:0] data_sh;
+wire [7:0] dataX;
+assign dataX=8'h8A;
+always @(SHd==1 && loadX==1)
+   data_sh=dataX << 1;     
+
+assign MISO=data_sh[0];
+endmodule
+
+module load_dataY(
+    input SHd, loadY,
+    output MISO);
+reg [7:0] data_sh;
+wire [7:0] dataY;
+assign dataY=8'h5B;
+always @(SHd==1 && loadY==1)
+   data_sh=dataY << 1;     
+
+assign MISO=data_sh[0];
+endmodule
+
+module load_dataZ(
+    input SHd, loadZ,
+    output MISO);
+reg [7:0] data_sh;
+wire [7:0] dataZ;
+assign dataZ=8'h8A;
+always @(SHd==1 && loadZ==1)
+   data_sh=dataZ << 1;     
+
+assign MISO=data_sh[0];
+endmodule
+
+module read_instr(
+    input SHi,
+    input MOSI,
+    output reg [15:0] data);
+
+always @(SHi==1)
+    data={data[14:0], MOSI};
+
+endmodule
+
+module counter15(
+    input EN15, clr15,
+    output HIT15
+);
+reg [3:0] cnt;
+
+always @(EN15, clr15)
+    if (EN15==1 && cnt<4'd15) cnt<=cnt+1;
+    else if (EN15==1 && cnt==4'd15) cnt<=0;
+    else if (clr15) cnt<=0;
+
+assign HIT15=(cnt==4'd15)?1:0;
+endmodule
+
+module counter7(
+    input EN7, clr7,
+    output HIT7
+);
+reg [2:0] cnt;
+
+always @(EN7, clr7)
+    if (EN7==1 && cnt<3'd7) cnt<=cnt+1;
+    else if (EN7==1 && cnt==3'd7) cnt<=0;
+    else if (clr7) cnt<=0;
+
+assign HIT7=(cnt==4'd7)?1:0;
+endmodule
