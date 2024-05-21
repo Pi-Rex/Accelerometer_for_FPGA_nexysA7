@@ -1,0 +1,132 @@
+`timescale 1ns / 1ps
+
+module GEN1sec(
+    input ck,
+    output READ
+    );
+reg [30:0] cnt, cnt_nxt;
+
+always @(posedge ck)
+    cnt<=cnt_nxt;
+/*   
+always @(cnt)
+    if (cnt<31'd100_000_000) cnt_nxt=cnt+1;
+    else cnt_nxt=0;
+    
+assign READ=(cnt==31'd100_000_000)?1:0;
+*/
+
+// per fare più veloce nelle simulazioni
+always @(cnt)
+    if (cnt<31'd100) cnt_nxt=cnt+1;
+    else cnt_nxt=0;
+    
+assign READ=(cnt==31'd100)?1:0;
+endmodule
+
+module control(
+    input ck, READ, READY,
+    output reg LD0, LD1, LD2, LD3, START,
+    output reg [7:0] regNAME);
+reg [31:0] state, state_nxt;
+
+parameter [31:0] WAIT="WAIT", R0="R0", W0="W0", R1="R1", W1="W1",
+    R2="R2", W2="W2", R3="R3", W3="W3";
+
+always @(posedge ck)
+    state<=state_nxt;
+
+always @(state, READ, READY)
+    case(state)
+        WAIT: if (READ==1) state_nxt<=R0;
+                else state_nxt<=WAIT;
+        R0: if (READY==1) state_nxt<=W0;
+                else state_nxt<=R0;
+        W0: state_nxt<=R1;
+        R1: if (READY==1) state_nxt<=W1;
+                else state_nxt=R1;
+        W1: state_nxt<=R2;
+        R2: if (READY==1) state_nxt<=W2;
+                else state_nxt=R2;
+        W2: state_nxt<=R3;
+        R3: if (READY==1) state_nxt<=W3;
+                else state_nxt=R3;
+        W3: state_nxt<=WAIT;
+        default: state_nxt<=WAIT;
+    endcase
+
+always @(state)
+    case(state)
+        WAIT: begin LD0<=0; LD1<=0; LD2<=0; LD3<=0; START<=0; end 
+        R0: begin START<=1; #10 START<=0; regNAME<=8'h08; end
+        W0: begin LD0<=1;end
+        R1: begin LD0<=0; START<=1; #10 START<=0; regNAME<=8'h09; end
+        W1: begin LD1<=1;end
+        R2: begin LD1<=0; START<=1; #10 START<=0; regNAME<=8'h0A; end
+        W2: begin LD2<=1;end
+        R3: begin LD2<=0; START<=1; #10 START<=0; end
+        W3: begin LD3<=1;end
+    endcase
+
+endmodule
+
+module REG0 (
+    input  ck, LD0,
+    input [7:0] DATAout,
+    output reg [3:0] seg0, seg1
+);
+always @(posedge ck)
+        if (LD0==1) begin seg0<= DATAout[3:0];
+                          seg1<= DATAout[7:4];
+            end
+endmodule
+
+module REG1 (
+    input  ck, LD1,
+    input [7:0] DATAout,
+    output reg [3:0] seg2, seg3
+);
+always @(posedge ck)
+        if (LD1==1) begin seg2<= DATAout[3:0];
+                          seg3<= DATAout[7:4];
+            end
+endmodule
+
+module REG2 (
+    input  ck, LD2,
+    input [7:0] DATAout,
+    output reg [3:0] seg4, seg5
+);
+always @(posedge ck)
+        if (LD2==1) begin seg4<= DATAout[3:0];
+                          seg5<= DATAout[7:4];
+            end
+endmodule
+
+module REG3 (
+    input  ck, LD3,
+    input [7:0] DATAout,
+    output reg [3:0] seg6, seg7
+);
+always @(posedge ck)
+        if (LD3==1) begin seg6<= 4'hC;
+                          seg7<= 4'hA;
+            end
+endmodule
+
+module block(
+input ck, READY,
+input [7:0] DATAout,
+output [3:0] seg0, seg1, seg2, seg3, seg4, seg5, seg6, seg7,
+output START,
+output wire [7:0] regNAME
+);
+
+wire READ, LD0, LD1, LD2, LD3;
+GEN1sec u0 (ck, READ);
+control u1 (ck ,READ, READY, LD0, LD1, LD2, LD3, START, regNAME);
+REG0 u2(ck, LD0, DATAout, seg0, seg1);
+REG1 u3(ck, LD1, DATAout, seg2, seg3);
+REG2 u4(ck, LD2, DATAout, seg4, seg5);
+REG3 u5(ck, LD3, DATAout, seg6, seg7);
+endmodule
