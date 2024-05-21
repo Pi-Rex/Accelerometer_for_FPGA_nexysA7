@@ -1,0 +1,166 @@
+`timescale 1ns / 1ps
+
+module READreg(
+   input ck, start, MISO,
+   input [7:0] REGname,
+   output ready, nCS, SCLK, MOSI,
+   output [7:0] DATAout
+);
+
+wire clr, en, en7, clr7,HIT, HIT15, HIT7, en15, clr15,  shDATA, loadISTR, shISTR;
+wire [55:0] state;
+
+cnt u0 (ck, clr, en, HIT);
+cnt7 u1 (ck, en7, clr7, HIT7);
+cnt15 u2 (ck, en15, clr15, HIT15);
+controllo u3 (ck, start, HIT, HIT7, HIT15,
+    shISTR, shDATA, en, clr, en7, clr7, en15, clr15, nCS, SCLK, ready, loadISTR);
+ISTR u4 (ck, loadISTR, shISTR, REGname, MOSI);
+DATA u5 (ck, MISO, shDATA, DATAout);
+endmodule
+
+module controllo (
+   input ck, start,
+   input HIT, HIT7, HIT15,
+   output reg shISTR, shDATA, en, clr, en7, clr7, en15, clr15, nCS, SCLK, READY, loadISTR);
+reg [55:0] state, state_nxt;
+ 
+parameter [55:0] IDLE="IDLE", SCK0="SCK0", LAST0="LAST0", SCK1="SCK1", LAST1="LAST1", READ0="READ0",
+   LASTR0="LASTR0", READ1="READ1", LASTR1="LASTR1", OK="OK", WAITcs0="WAITcs0", WAITcs1="WAITcs1";
+
+always @(posedge ck)
+   state<=state_nxt;
+
+always @(state, start, HIT, HIT15, HIT7)
+   case(state)
+      IDLE: if (start==1) state_nxt<=SCK0;
+            else state_nxt<=IDLE;
+      SCK0: if (HIT==1) state_nxt<=LAST0;
+            else state_nxt<=SCK0;
+      LAST0: state_nxt<=SCK1;
+      SCK1: if (HIT==1) state_nxt<=LAST1;
+            else state_nxt<=SCK1;
+      LAST1: if (HIT15==1) state_nxt<=READ0;
+             else state_nxt<=SCK0;
+      READ0: if(HIT==1) state_nxt<=LASTR0;
+             else state_nxt<=READ0;
+      LASTR0: state_nxt<=READ1;
+      READ1: if (HIT==1) state_nxt<=LASTR1;
+             else state_nxt<=READ1;
+      LASTR1: if (HIT7==1) state_nxt<=OK;
+              else state_nxt<=READ0;
+      OK: state_nxt<=WAITcs1;
+      WAITcs1: state_nxt<=WAITcs0;
+      WAITcs0: state_nxt<=IDLE;
+      default: state_nxt<=IDLE;
+   endcase
+
+always @(state)
+   case(state)
+   IDLE: begin 
+     en<=0; en7<=0; en15<=0; clr<=1; clr7<=1; clr15<=1; READY<=0; nCS<=1; SCLK<=0; loadISTR<=1; end
+   SCK0: begin 
+     nCS<=0; en<=1; en15<=0; clr<=0; clr15<=0; loadISTR<=0; 
+     SCLK<=0; 
+     shISTR<=0; end
+   LAST0: begin
+      en<=0; clr<=1; end
+   SCK1: begin 
+      clr<=0; en<=1;
+      SCLK<=1;   end
+   LAST1: begin  
+      clr<=1; en15<=1; en<=0;
+      shISTR<=1; end
+   READ0: begin 
+      clr<=0; SCLK<=0; en<=1; shDATA<=0; en15<=0; clr7<=0; clr15<=1; shISTR<=0; en7<=0; end
+   LASTR0: begin 
+      clr<=1; en<=0; shDATA<=0; end
+   READ1: begin
+      SCLK<=1; en<=1; clr<=0; shDATA<=1; end
+   LASTR1: begin
+      clr<=1; en7<=1; end
+   OK: begin 
+      en7<=0; READY<=1; SCLK<=0; end
+   WAITcs1: nCS<=1;
+   endcase
+endmodule
+
+module ISTR(
+   input ck,
+   input loadISTR,
+   input shISTR,
+   input [7:0]regname,
+   output MOSI);
+reg [15:0] istr;
+wire [7:0] instruction;
+assign instruction = 8'h0B;
+
+always @(shISTR, loadISTR)
+        if (loadISTR==1) istr={instruction[7:0], regname [7:0]}; 
+        else if (shISTR==1) istr= istr << 1;
+
+assign MOSI=istr[15];
+
+endmodule
+
+module DATA(
+   input ck, MISO, shDATA,
+   output reg [7:0] DATAout);
+reg [7:0] dato_nxt;
+
+always @(posedge ck)
+        DATAout<=dato_nxt;
+always @(shDATA)
+        if (shDATA==1) dato_nxt= {DATAout[6:0], MISO};
+        else dato_nxt=DATAout;
+
+endmodule
+
+module cnt(
+   input ck, clr, en,
+   output HIT);
+reg [3:0] cont, cnt_nxt;
+
+always @(posedge ck)
+   cont<=cnt_nxt;
+
+always @(cont, en, clr)
+   if (en==1 && cont<4'd9) cnt_nxt=cont+4'b1;
+   else if (clr) cont<=0;
+   else cnt_nxt=0;
+
+assign HIT=(cont==4'd9)?1:0;
+endmodule   
+
+module cnt15(
+   input ck, en15, clr15,
+   output HIT15);
+reg [4:0] cnt, cnt_nxt;
+
+always @(en15, clr15)
+   if (clr15==1) cnt_nxt=0;
+   else if (en15==1) cnt<=cnt_nxt;
+   
+always @(cnt)
+   if (cnt<4'd15) cnt_nxt=cnt+1;
+   else cnt_nxt=0;
+
+assign HIT15=(cnt==4'd15)?1:0;
+   
+endmodule
+
+module cnt7(
+   input ck, en7, clr7,
+   output HIT7);
+reg [2:0] cnt, cnt_nxt;
+
+always @(en7, clr7)
+   if (clr7) cnt_nxt=0;
+   else if (en7==1) cnt<=cnt_nxt;
+   
+always @(cnt)
+   if (cnt<3'd7) cnt_nxt=cnt+1;
+   else cnt_nxt=0;
+
+assign HIT7=(cnt==3'd7)?1:0;
+endmodule
